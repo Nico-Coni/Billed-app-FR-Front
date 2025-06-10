@@ -12,7 +12,7 @@ import '@testing-library/jest-dom/extend-expect'
 
 describe("Given I am connected as an employee", () => {
   beforeEach(() => {
-    Object.defineProperty(window, 'localStorage', { value: localStorageMock })
+    Object.defineProperty(window, 'localStorage', { value: localStorageMock, writable: true })
     window.localStorage.setItem('user', JSON.stringify({ type: 'Employee' }))
     const root = document.createElement("div")
     root.setAttribute("id", "root")
@@ -137,13 +137,15 @@ describe("Given I am connected as an employee", () => {
       });
 
       // Simule l'appel
-      await newBill.handleChangeFile({
+      newBill.handleChangeFile({
         preventDefault: () => { },
         target: fileInput
       });
 
-      // Vérifie que console.error a bien été appelé avec l'erreur
-      expect(consoleErrorSpy).toHaveBeenCalledWith(mockError);
+      // Vérifie que console.error a bien été appelé avec l'erreur 
+      await waitFor(() => {
+        expect(consoleErrorSpy).toHaveBeenCalledWith(mockError);
+      })
 
       // Nettoyage
       consoleErrorSpy.mockRestore();
@@ -151,63 +153,150 @@ describe("Given I am connected as an employee", () => {
   })
 })
 describe("When I submit form", () => {
-  test("Then it should add a new bill in bills and bring you to Bill page", async () => {
-    const mockNavigate = jest.fn()
-
-    const newBillInstance = new NewBill({
-      document,
-      onNavigate: mockNavigate,
-      store: mockStore,
-      localStorage: window.localStorage,
-      testMode: true,
-
-    })
-
-    //Je remplis les différents champs du formulaire
-    fireEvent.change(screen.getByTestId('expense-type'), { target: { value: "Transport" } })
-    fireEvent.change(screen.getByTestId('expense-name'), { target: { value: "Vol Lyon" } })
-    fireEvent.change(screen.getByTestId('datepicker'), { target: { value: "2021-05-15" } })
-    fireEvent.change(screen.getByTestId('amount'), { target: { value: 200 } })
-    fireEvent.change(screen.getByTestId('vat'), { target: { value: "70" } })
-    fireEvent.change(screen.getByTestId('pct'), { target: { value: 20 } })
-
-    //Je créer un fichier mocké avec une extension valide, puis je l'ajoute au formulaire
-    const file = new File(['dummy content'], 'image.jpg', { type: 'image/jpeg' })
-    const fileInput = screen.getByTestId('file')
-    fireEvent.change(fileInput, { target: { files: [file] } })
-
-    //Je submit le formulaire avec les données remplis
-    const form = screen.getByTestId("form-new-bill")
-    form.addEventListener("submit", newBillInstance.handleSubmit.bind(newBillInstance))
-    fireEvent.submit(form)
-
-    //J'attends pour vérfier que mockNavigate a bien été appelé avec #employee/bills
-    await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith("#employee/bills")
-    })
-  })
-  test("Then it should log an error if the store update fails", async () => {
-    const mockError = new Error("Erreur de store")
-    const mockConsoleError = jest.spyOn(console, "error").mockImplementation(() => { })
-
-    const newBillInstance = new NewBill({
-      document,
-      onNavigate: jest.fn(),
-      store: {
-        bills: () => ({
-          update: jest.fn().mockRejectedValueOnce(mockError)
+  beforeEach(() => {
+    Object.defineProperty(window, 'localStorage', { value: localStorageMock })
+    window.localStorage.setItem('user', JSON.stringify({ type: 'Employee' }))
+    const root = document.createElement("div")
+    root.setAttribute("id", "root")
+    document.body.innerHTML = ""  // reset du DOM
+    document.body.append(root)
+    router()
+    window.onNavigate(ROUTES_PATH.NewBill)
+    global.alert = jest.fn();
+    global.fetch = jest.fn();
+    global.fetch.mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          fileUrl: 'https://storage.googleapis.com/mon-bucket/image.jpg',
+          key: 'bill-abc123'
         })
-      },
-      localStorage: window.localStorage
+      })
+    )
+    test("Then it should add a new bill in bills and bring you to Bill page", async () => {
+      const mockNavigate = jest.fn()
+
+      const newBillInstance = new NewBill({
+        document,
+        onNavigate: mockNavigate,
+        store: mockStore,
+        localStorage: window.localStorage,
+        testMode: true,
+      })
+
+      //Je remplis les différents champs du formulaire
+      fireEvent.change(screen.getByTestId('expense-type'), { target: { value: "Transport" } })
+      fireEvent.change(screen.getByTestId('expense-name'), { target: { value: "Vol Lyon" } })
+      fireEvent.change(screen.getByTestId('datepicker'), { target: { value: "2021-05-15" } })
+      fireEvent.change(screen.getByTestId('amount'), { target: { value: 200 } })
+      fireEvent.change(screen.getByTestId('vat'), { target: { value: "70" } })
+      fireEvent.change(screen.getByTestId('pct'), { target: { value: 20 } })
+
+      //Je créer un fichier mocké avec une extension valide, puis je l'ajoute au formulaire
+      const file = new File(['dummy content'], 'image.jpg', { type: 'image/jpeg' })
+      const fileInput = screen.getByTestId('file')
+      fireEvent.change(fileInput, { target: { files: [file] } })
+
+      //Je soumets le formulaire
+      const form = screen.getByTestId("form-new-bill")
+      fireEvent.submit(form)
+
+      //J'attends pour vérfier que mockNavigate a bien été appelé avec #employee/bills
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith(ROUTES_PATH['Bills'])
+      })
     })
+    test("Then it should log an error if the store update fails", async () => {
+      const mockError = new Error("Erreur de store")
+      const mockConsoleError = jest.spyOn(console, "error").mockImplementation(() => { })
 
-    const form = screen.getByTestId("form-new-bill")
-    fireEvent.submit(form)
+      const newBillInstance = new NewBill({
+        document,
+        onNavigate: jest.fn(),
+        store: {
+          bills: () => ({
+            update: jest.fn().mockRejectedValueOnce(mockError)
+          })
+        },
+        localStorage: window.localStorage
+      })
 
-    await waitFor(() => {
-      expect(mockConsoleError).toHaveBeenCalledWith(mockError)
+      const form = screen.getByTestId("form-new-bill")
+      fireEvent.submit(form)
+
+      await waitFor(() => {
+        expect(mockConsoleError).toHaveBeenCalledWith(mockError)
+      })
+
+      mockConsoleError.mockRestore()
     })
+    test('handleSubmit handles a 404 error coming from updateBill', () => {
+      let instance = {
+        fileUrl: 'http://fichier.test/file.jpg',
+        fileName: 'file.jpg',
+        updateBill: jest.fn(),
+        onNavigate: jest.fn(),
+        handleSubmit: null,
+      }
+      // Ici on fait en sorte que updateBill lance une erreur 404
+      instance.updateBill = jest.fn(() => {
+        const error = new Error('Not Found')
+        error.status = 404
+        throw error
+      })
 
-    mockConsoleError.mockRestore()
+      const mockTarget = {
+        querySelector: jest.fn()
+          .mockImplementation(selector => {
+            const map = {
+              'select[data-testid="expense-type"]': { value: 'Food' },
+              'input[data-testid="expense-name"]': { value: 'Pizza' },
+              'input[data-testid="amount"]': { value: '15' },
+              'input[data-testid="datepicker"]': { value: '2025-06-06' },
+              'input[data-testid="vat"]': { value: '10' },
+              'input[data-testid="pct"]': { value: '30' },
+              'textarea[data-testid="commentary"]': { value: 'Test commentaire' },
+            }
+            return map[selector]
+          }),
+      }
+
+      const mockEvent = {
+        preventDefault: jest.fn(),
+        target: mockTarget,
+      }
+
+      expect(() => instance.handleSubmit(mockEvent)).toThrowError('Not Found')
+    })
+    test('handleSubmit handles a 500 error coming from updateBill', () => {
+      instance.updateBill = jest.fn(() => {
+        const error = new Error('Internal Server Error')
+        error.status = 500
+        throw error
+      });
+
+      const mockTarget = {
+        querySelector: jest.fn()
+          .mockImplementation(selector => {
+            const map = {
+              'select[data-testid="expense-type"]': { value: 'Food' },
+              'input[data-testid="expense-name"]': { value: 'Pizza' },
+              'input[data-testid="amount"]': { value: '15' },
+              'input[data-testid="datepicker"]': { value: '2025-06-06' },
+              'input[data-testid="vat"]': { value: '10' },
+              'input[data-testid="pct"]': { value: '30' },
+              'textarea[data-testid="commentary"]': { value: 'Test commentaire' },
+            }
+            return map[selector]
+          }),
+      }
+
+      const mockEvent = {
+        preventDefault: jest.fn(),
+        target: mockTarget,
+      }
+
+      expect(() => instance.handleSubmit(mockEvent)).toThrowError('Internal Server Error')
+    })
   })
 })

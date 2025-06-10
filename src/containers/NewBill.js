@@ -17,7 +17,8 @@ export default class NewBill {
   }
   handleChangeFile = async (e) => {
     e.preventDefault()
-    const file = this.document.querySelector(`input[data-testid="file"]`).files[0]
+    const fileInput = this.document.querySelector(`input[data-testid="file"]`)
+    const file = fileInput.files[0]
     const filePath = e.target.value.split(/\\/g)
     const fileName = file.name
     const formData = new FormData()
@@ -27,36 +28,28 @@ export default class NewBill {
     const fileExtension = file.name.split('.').pop().toLowerCase()
     const allowedExtensions = ['jpg', 'jpeg', 'png']
 
-    if (allowedExtensions.includes(fileExtension)) {
-      formData.append('file', file)
-      formData.append('email', email)
-
-      if (this.testMode) {
-        this.fileUrl = "http://localhost/test-file.jpg"
-        this.fileName = fileName
-        this.billId = "test-bill-id"
-        return
-      }
-
-      this.store
-        .bills()
-        .create({
-          data: formData,
-          headers: {
-            noContentType: true
-          }
-        })
-        .then(({ fileUrl, key }) => {
-          console.log(fileUrl)
-          this.billId = key
-          this.fileUrl = fileUrl
-          this.fileName = fileName
-        }).catch(error => console.error(error))
+    if (!allowedExtensions.includes(fileExtension)) {
+      alert("L'extension du fichier n'est pas autorisée. Les extensions valides sont : .jpg, .jpeg, .png")
+      e.target.value = ""
+      return
     }
-    alert("L'extension du fichier n'est pas autorisée. Les extensions valides sont : .jpg, .jpeg, .png")
-    e.target.value = ""
-    //return Promise.resolve()
+    formData.append('file', file)
+    formData.append('email', email)
 
+    this.store
+      .bills()
+      .create({
+        data: formData,
+        headers: {
+          noContentType: true
+        }
+      })
+      .then(({ fileUrl, key }) => {
+        console.log(fileUrl)
+        this.billId = key
+        this.fileUrl = fileUrl
+        this.fileName = fileName
+      }).catch(error => console.error(error))
   }
   handleSubmit = e => {
     e.preventDefault()
